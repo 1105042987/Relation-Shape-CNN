@@ -136,23 +136,23 @@ def validate(test_dataloader, model, criterion, args, iter):
     model.eval()
     losses, preds, labels = [], [], []
     for j, data in enumerate(test_dataloader, 0):
-        points, target = data
-        points, target = points.cuda(), target.cuda()
-        points, target = Variable(points, volatile=True), Variable(target, volatile=True)
-        
-        # fastest point sampling
-        fps_idx = pointnet2_utils.furthest_point_sample(points, args.num_points)  # (B, npoint)
-        # fps_idx = fps_idx[:, np.random.choice(1200, args.num_points, False)]
-        points = pointnet2_utils.gather_operation(points.transpose(1, 2).contiguous(), fps_idx).transpose(1, 2).contiguous()
+        with torch.no_grad():
+            points, target = data
+            points, target = points.cuda(), target.cuda()
+            
+            # fastest point sampling
+            fps_idx = pointnet2_utils.furthest_point_sample(points, args.num_points)  # (B, npoint)
+            # fps_idx = fps_idx[:, np.random.choice(1200, args.num_points, False)]
+            points = pointnet2_utils.gather_operation(points.transpose(1, 2).contiguous(), fps_idx).transpose(1, 2).contiguous()
 
-        pred = model(points)
-        target = target.view(-1)
-        loss = criterion(pred, target)
-        losses.append(loss.data.clone())
-        _, pred_choice = torch.max(pred.data, -1)
-        
-        preds.append(pred_choice)
-        labels.append(target.data)
+            pred = model(points)
+            target = target.view(-1)
+            loss = criterion(pred, target)
+            losses.append(loss.data.clone())
+            _, pred_choice = torch.max(pred.data, -1)
+            
+            preds.append(pred_choice)
+            labels.append(target.data)
         
     preds = torch.cat(preds, 0)
     labels = torch.cat(labels, 0)

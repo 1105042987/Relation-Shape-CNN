@@ -28,10 +28,12 @@ If our paper is helpful for your research, please consider citing:
 ### Requirement
 
 - Ubuntu 14.04
-- Python 3 (recommend Anaconda3)
-- Pytorch 0.3.\*/0.4.\*
+- Python 3.6 (recommend Anaconda3)
 - CMake > 2.8
+- Pytorch 0.3.\*/0.4.\*
 - CUDA 8.0 + cuDNN 5.1
+- `conda install pytorch=0.4.1 cuda90 -c pytorch`
+- `conda install torchvision scipy h5py pyyaml`
 
 ### Building Kernel
 
