@@ -25,7 +25,6 @@ class ModelNet40Cls(data.Dataset):
 
         self.transforms = transforms
 
-        root = '/opt/tiger/access/service/data/modelnet40'
         self.folder = "modelnet40_ply_hdf5_2048"
         self.data_dir = os.path.join(root, self.folder)
 

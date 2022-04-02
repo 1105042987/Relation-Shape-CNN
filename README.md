@@ -55,7 +55,7 @@ Download and unzip [ShapeNet Part](https://shapenet.cs.stanford.edu/media/shapen
 ## Usage: Training
 ### Shape Classification
 
-    sh train_cls.sh
+    sh train_cls.sh <cfgs name>
         
 You can modify `relation_prior` in `cfgs/config_*_cls.yaml`. We have trained a Single-Scale-Neighborhood classification model in `cls` folder, whose accuracy is 92.38%.
         

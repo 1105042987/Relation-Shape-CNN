@@ -94,7 +94,7 @@ def main():
 def train(train_dataloader, test_dataloader, model, criterion, optimizer, lr_scheduler, bnm_scheduler, args, num_batch):
     PointcloudScaleAndTranslate = d_utils.PointcloudScaleAndTranslate()   # initialize augmentation
     global g_acc 
-    g_acc = 0.91    # only save the model whose acc > 0.91
+    g_acc = 0    # only save the model whose acc > 0.91
     batch_count = 0
     model.train()
     for epoch in range(args.epochs):
@@ -156,11 +156,13 @@ def validate(test_dataloader, model, criterion, args, iter):
         
     preds = torch.cat(preds, 0)
     labels = torch.cat(labels, 0)
-    acc = (preds == labels).sum() / labels.numel()
+    acc = float((preds == labels).sum()) / labels.numel()
     print('\nval loss: %0.6f \t acc: %0.6f\n' %(np.array(losses).mean(), acc))
     if acc > g_acc:
         g_acc = acc
-        torch.save(model.state_dict(), '%s/cls_ssn_iter_%d_acc_%0.6f.pth' % (args.save_path, iter, acc))
+        torch.save(model.state_dict(), os.path.join(args.save_path,'model.pth'))
+        with open(os.path.join(args.save_path,'best.txt'),'a') as f: f.write(f'iter:{iter} acc:{acc}\n')
+
     model.train()
     
 if __name__ == "__main__":

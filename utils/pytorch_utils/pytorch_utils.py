@@ -139,7 +139,7 @@ class GloAvgConv(nn.Module):
             self, 
             C_in, 
             C_out, 
-            init=nn.init.kaiming_normal, 
+            init=nn.init.kaiming_normal_, 
             bias = True,
             activation = nn.ReLU(inplace=True)
     ):
