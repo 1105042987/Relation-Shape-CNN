@@ -7,7 +7,7 @@ from linalg_utils import pdist2, PDist2Order
 from collections import namedtuple
 import pytorch_utils as pt_utils
 from typing import List, Tuple
-
+import math
 from _ext import pointnet2
 
 
@@ -448,3 +448,169 @@ class GroupAll(nn.Module):
             new_features = grouped_xyz
 
         return new_features
+
+### Code for quaternion representation
+
+def normalize(v, dim):
+    n = torch.sqrt(torch.sum(v*v, dim=dim, keepdim=True))
+    return v / (n + 1e-6)
+
+
+def project(p, v, dim):
+    """
+    project v to the plan orthognal to p
+    p is normalized
+    """
+    p = normalize(p, dim)
+    vert = torch.sum(p * v, dim=dim, keepdim=True) * p
+    return v - vert
+    
+
+def project_one(p, dim):
+    """Get one reference vector in the orthogonal projection plan.
+       [1,0,0] - <[1,0,0],p>*p = [1-px*px, -px*py, -px*pz] or
+       [0,1,0] - <[0,1,0],p>*p = [-py*px, 1-py*py, -py*pz] if p colinear with [1,0,0]
+       Then normalize
+    """
+    p = normalize(p, dim)
+    ref = torch.zeros_like(p)
+    px = p.select(dim=dim, index=0)
+    py = p.select(dim=dim, index=1)
+    pz = p.select(dim=dim, index=2)
+    colinear_x = torch.abs(px) > (1 - 1e-3)
+    ref.select(dim, 0)[~colinear_x] = 1 - px[~colinear_x] * px[~colinear_x]
+    ref.select(dim, 1)[~colinear_x] = - px[~colinear_x] * py[~colinear_x]
+    ref.select(dim, 2)[~colinear_x] = - px[~colinear_x] * pz[~colinear_x]
+    # if colinear
+    ref.select(dim, 0)[colinear_x] = - py[colinear_x] * px[colinear_x]
+    ref.select(dim, 1)[colinear_x] = 1 - py[colinear_x] * py[colinear_x]
+    ref.select(dim, 2)[colinear_x] = - py[colinear_x] * pz[colinear_x]
+    return normalize(ref, dim)
+    
+
+def rot_sort(p, pts, coord_dim, sample_dim, ref=None):
+    """
+    sort pts according to their orthogonal projection of p, 
+    clockwise w.r.t one reference vector.
+    """
+    p = normalize(p, dim=coord_dim)
+    
+    if ref is None:
+        ref = project_one(p, coord_dim)
+    ref = ref.expand_as(pts)
+    
+    projs = normalize(project(p, pts, coord_dim), coord_dim)
+
+    # Compute angles from ref to projs 
+    sinus = torch.sum(torch.cross(ref, projs, coord_dim) * p, dim=coord_dim, keepdim=True)
+    cosinus = torch.sum(ref * projs, dim=coord_dim, keepdim=True)
+    angles = torch.atan2(sinus, cosinus)
+
+    # If projection is too small, we randomly give an angle 
+    # (because ref is not rotation-invariant)
+    close_ind = torch.sum(projs * projs, dim=coord_dim, keepdim=True) < 1e-12
+    angles[close_ind] = (torch.rand(close_ind.sum()).cuda() - 0.5) * math.pi * 2
+
+    # Sort according to angles
+    ind = angles.sort(dim=sample_dim)[1]
+    pts = pts.gather(index=ind.expand_as(pts), dim=sample_dim)
+    
+    return pts
+
+
+def to_quat(xyz, radius):
+    """
+    xyz: B, 3, N, S -> B, 4, N, S
+    """
+    dist = torch.sqrt(torch.sum(xyz * xyz, dim=1, keepdim=True))
+
+    ori = xyz / (dist + 1e-6)
+    theta = dist / radius * math.pi / 2.
+    s = torch.cos(theta)
+    v = torch.sin(theta) * ori
+    q = torch.cat([s, v], dim=1)
+
+    return q
+
+def calc_invariance(center,relative_vector,dim):
+    norm2 = torch.sqrt(torch.sum(relative_vector**2, dim=dim, keepdim=True))
+    center = normalize(center,dim=dim)
+    cross = (center*relative_vector).sum(dim, keepdim=True)/(norm2+1e-6)
+    angle = torch.acos(torch.clamp(cross, min=-1+1e-6, max=1-1e-6))
+    return torch.cat([norm2,angle],dim=dim)
+
+
+class QueryAndGroupQuat(nn.Module):
+    r"""
+    Groups with a ball query of radius, then convert neighbor points to quaternion, sorted by distance
+
+    Parameters
+    ---------
+    radius : float32
+        Radius of ball
+    nsample : int32
+        Maximum number of features to gather in the ball
+    """
+
+    def __init__(self, radius, nsample, use_center):
+        # type: (QueryAndGroup, float, int, bool) -> None
+        super(QueryAndGroupQuat, self).__init__()
+        self.radius, self.nsample, self.use_center = radius, nsample, use_center
+
+    def forward(
+            self,
+            xyz: torch.Tensor,
+            new_xyz: torch.Tensor,
+            features: torch.Tensor = None,
+            fps_idx: torch.IntTensor = None
+    ) -> Tuple[torch.Tensor]:
+        r"""
+        Parameters
+        ----------
+        xyz : torch.Tensor
+            xyz coordinates of the features (B, N, 3)
+        new_xyz : torch.Tensor : 
+            centriods (B, npoint, 3)
+        features : torch.Tensor
+            Descriptors of the features (B, C, N)
+
+        Returns
+        -------
+        new_features : torch.Tensor
+            (B, 3 + C, npoint, nsample) tensor
+        -------
+        N : num of all points
+        npoint: num of furthest sample
+        nsample: num of nearest neighbor
+        """
+        idx = ball_query(self.radius, self.nsample, xyz, new_xyz, fps_idx)
+        # idx = ball_query(self.radius, self.nsample+1, xyz, new_xyz, fps_idx)
+        xyz_trans = xyz.transpose(1, 2).contiguous()
+        # grouped_xyz = grouping_operation(xyz_trans, idx)  # (B, 3, npoint, nsample)
+        grouped_xyz = grouping_operation(xyz_trans, idx)[:, :, :, 1:]  # (B, 3, npoint, nsample)
+
+        new_xyz = new_xyz.transpose(1, 2).unsqueeze(-1)  # B, 3, npoint, 1
+        grouped_xyz = rot_sort(p=new_xyz, pts=grouped_xyz - new_xyz, coord_dim=1, sample_dim=-1)
+        invariance_feat = calc_invariance(new_xyz,grouped_xyz,dim=1) # (B, 2, npoint, nsample)
+
+        B, _, npoint, nsample = grouped_xyz.shape
+
+        grouped_quat = to_quat(grouped_xyz, self.radius).unsqueeze(2)  # B, 4, 1, npoint, nsample
+        new_features = [grouped_quat]
+
+        # Cyclic permute and concat
+        M = 8
+        index = torch.tensor([x for x in range(1, nsample)] + [0]).cuda()
+        for _ in range(M - 1):
+            new_features.append(new_features[-1].index_select(dim=-1, index=index))
+
+        new_features = torch.cat(new_features, dim=2)  # B, 4, M, npoint, nsample
+        new_features = new_features.reshape(B, 4 * M, npoint, nsample)
+
+        if features is not None:
+            grouped_features = grouping_operation(features, idx)[:, :, :, 1:]  # (B, C, npoint, nsample)
+            new_features = torch.cat(
+                [new_features, grouped_features], dim=1
+            )  # (B, 32 + C, npoint, nsample)
+
+        return torch.cat([invariance_feat,new_features],dim=1) # (B, 2+32+C, npoint, nsample) C=0 for first layer

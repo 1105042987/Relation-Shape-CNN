@@ -2,7 +2,7 @@ common:
     workers: 4
 
     num_points: 1024
-    num_classes: 40
+    num_classes: 10
     batch_size: 32
     
     base_lr: 0.001
@@ -27,7 +27,9 @@ common:
     #       2  for (2D Ed, x'_i, x'_j, x'_j - x'_i), channels = 10,  x' indicates 2D coordinates
     relation_prior: 1
     
-    typer: null
+    typer:
+        - 'theta'
+        - 'inner'
     checkpoint: ''        # the model to start from
     save_path: ../logs/rscnn/
     data_root: ../data/modelnet40

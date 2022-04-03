@@ -8,7 +8,7 @@ import numpy as np
 import os
 from torchvision import transforms
 from models import RSCNN_SSN_Cls as RSCNN_SSN
-from data import ModelNet40Cls
+from data import ModelNet40Cls,ModelNet10Cls
 import utils.pytorch_utils as pt_utils
 import utils.pointnet2_utils as pointnet2_utils
 import data.data_utils as d_utils
@@ -40,6 +40,7 @@ def main():
         print('\n[%s]:'%(k), v)
     print("\n**************************\n")
     
+    args.save_path = os.path.join(args.save_path,args.config.split('/')[-1].split('.')[0])
     try:
         os.makedirs(args.save_path)
     except OSError:
@@ -52,7 +53,8 @@ def main():
         d_utils.PointcloudToTensor()
     ])
     
-    train_dataset = ModelNet40Cls(num_points = args.num_points, root = args.data_root, transforms=train_transforms)
+    ModelNet = ModelNet40Cls if args.num_classes==40 else ModelNet10Cls
+    train_dataset = ModelNet(num_points = args.num_points, root = args.data_root, transforms=train_transforms)
     train_dataloader = DataLoader(
         train_dataset, 
         batch_size=args.batch_size,
@@ -61,7 +63,7 @@ def main():
         pin_memory=True
     )
 
-    test_dataset = ModelNet40Cls(num_points = args.num_points, root = args.data_root, transforms=test_transforms, train=False)
+    test_dataset = ModelNet(num_points = args.num_points, root = args.data_root, transforms=test_transforms, train=False)
     test_dataloader = DataLoader(
         test_dataset, 
         batch_size=args.batch_size,
@@ -70,7 +72,8 @@ def main():
         pin_memory=True
     )
     
-    model = RSCNN_SSN(num_classes = args.num_classes, input_channels = args.input_channels, relation_prior = args.relation_prior, use_xyz = True)
+    model = RSCNN_SSN(num_classes = args.num_classes, input_channels = args.input_channels, 
+                        relation_prior = args.relation_prior, use_xyz = True, typer=args.typer)
     model.cuda()
     optimizer = optim.Adam(
         model.parameters(), lr=args.base_lr, weight_decay=args.weight_decay)

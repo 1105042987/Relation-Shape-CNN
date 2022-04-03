@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.modules import conv
 
 import pointnet2_utils
 import pytorch_utils as pt_utils
@@ -8,6 +9,7 @@ from typing import List
 import numpy as np
 import time
 import math
+from qpu_layers import QPU, QuaterPostProcess
 
 class _PointnetSAModuleBase(nn.Module):
 
@@ -151,6 +153,91 @@ class PointnetSAModuleMSG(_PointnetSAModuleBase):
             else:   # global convolutional pooling
                 self.mlps.append(pt_utils.GloAvgConv(C_in = C_in, C_out = C_out))
 
+class QPointnetSAModuleMSG(_PointnetSAModuleBase):
+    r"""Pointnet set abstrction layer with multiscale grouping
+
+    Parameters
+    ----------
+    npoint : int
+        Number of points
+    radii : list of float32
+        list of radii to group with
+    nsamples : list of int32
+        Number of samples in each ball query
+    mlps : list of list of int32
+        Spec of the pointnet before the global max_pool for each scale
+    bn : bool
+        Use batchnorm
+    """
+
+    def __init__(
+            self,
+            *,
+            npoint: int,
+            radii: List[float],
+            nsamples: List[int],
+            mlps: List[List[int]],
+            use_xyz: bool = True,
+            bias = True,
+            init = nn.init.kaiming_normal_,
+            first_layer = True,
+            relation_prior = 1,
+            typer=['theta'],
+    ):
+        super().__init__()
+        assert len(radii) == len(nsamples) == len(mlps)
+        assert first_layer
+        self.npoint = npoint
+        self.groupers = nn.ModuleList()
+        self.mlps = nn.ModuleList()
+        
+        # initialize shared mapping functions
+        C_out = mlps[0][1]
+        C_mid = math.floor(C_out / 2)
+        Cout_qpu = math.floor(C_out / 4)
+
+        post_process = QuaterPostProcess(-1,typer)
+        Cout_qpost = post_process.outfeat(Cout_qpu*4)
+        mapping_func1 = nn.Conv2d(in_channels = 2, out_channels = C_mid, kernel_size = (1, 1), 
+                                  stride = (1, 1), bias = bias)
+        mapping_func2 = nn.Conv2d(in_channels = C_mid, out_channels = Cout_qpost, kernel_size = (1, 1), 
+                              stride = (1, 1), bias = bias)
+        # xyz_raising = nn.Conv2d(in_channels = C_in, out_channels = 16, kernel_size = (1, 1), 
+        #                       stride = (1, 1), bias = bias)
+        xyz_raising = nn.Sequential(
+            QPU(4*8,Cout_qpu*4),
+            post_process,
+        )
+    
+        if npoint is not None:
+            init(mapping_func1.weight)
+            init(mapping_func2.weight)
+            if bias:
+                nn.init.constant_(mapping_func1.bias, 0)
+                nn.init.constant_(mapping_func2.bias, 0)    
+                     
+            # channel raising mapping
+            cr_mapping = nn.Conv1d(in_channels = Cout_qpost, 
+                            out_channels = C_out, kernel_size = 1, stride = 1, bias = bias)
+            init(cr_mapping.weight)
+            nn.init.constant_(cr_mapping.bias, 0)
+
+        mapping = [mapping_func1, mapping_func2, cr_mapping, xyz_raising]
+        
+        for i in range(len(radii)):
+            radius = radii[i]
+            nsample = nsamples[i]
+            self.groupers.append(
+                pointnet2_utils.QueryAndGroupQuat(radius, nsample, use_center=use_xyz)
+                if npoint is not None else pointnet2_utils.GroupAll(use_xyz)
+            )
+            mlp_spec = mlps[i]
+            if first_layer:
+                mlp_spec[0] = Cout_qpost
+            if npoint is not None:
+                self.mlps.append(pt_utils.SharedRSConv(mlp_spec, mapping = mapping, relation_prior = relation_prior, first_layer = first_layer, conv=pt_utils.QRSConv))
+            else:   # global convolutional pooling
+                self.mlps.append(pt_utils.GloAvgConv(C_in = C_in, C_out = C_out))
 
 class PointnetSAModule(PointnetSAModuleMSG):
     r"""Pointnet set abstrction layer

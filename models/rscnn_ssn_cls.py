@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import pytorch_utils as pt_utils
-from pointnet2_modules import PointnetSAModule, PointnetSAModuleMSG
+from pointnet2_modules import PointnetSAModule, PointnetSAModuleMSG, QPointnetSAModuleMSG
 import numpy as np
 
 # Relation-Shape CNN: Single-Scale Neighborhood
@@ -26,22 +26,36 @@ class RSCNN_SSN(nn.Module):
             Whether or not to use the xyz position of a point as a feature
     """
 
-    def __init__(self, num_classes, input_channels=0, relation_prior=1, use_xyz=True):
+    def __init__(self, num_classes, input_channels=0, relation_prior=1, use_xyz=True, typer=None):
         super().__init__()
 
         self.SA_modules = nn.ModuleList()
         
-        self.SA_modules.append(
-            PointnetSAModuleMSG(
-                npoint=512,
-                radii=[0.23],
-                nsamples=[48],
-                mlps=[[input_channels, 128]],
-                first_layer=True,
-                use_xyz=use_xyz,
-                relation_prior=relation_prior
+        if typer is None:
+            self.SA_modules.append(
+                PointnetSAModuleMSG(
+                    npoint=512,
+                    radii=[0.23],
+                    nsamples=[48],
+                    mlps=[[input_channels, 128]],
+                    first_layer=True,
+                    use_xyz=use_xyz,
+                    relation_prior=relation_prior
+                )
             )
-        )
+        else:
+            self.SA_modules.append(
+                QPointnetSAModuleMSG(
+                    npoint=512,
+                    radii=[0.4],
+                    nsamples=[48],
+                    mlps=[[input_channels, 128]],
+                    first_layer=True,
+                    use_xyz=use_xyz,
+                    relation_prior=relation_prior,
+                    typer=typer
+                )
+            )
 
         self.SA_modules.append(
             PointnetSAModuleMSG(

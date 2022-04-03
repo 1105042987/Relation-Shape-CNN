@@ -72,6 +72,47 @@ class RSConv(nn.Module):
         x = self.activation(self.bn_channel_raising(self.cr_mapping(x)))
         
         return x
+
+class QRSConv(nn.Module):
+    '''
+    Input shape: (B, C_in, npoint, nsample)
+    Output shape: (B, C_out, npoint)
+    '''
+    def __init__(
+            self, 
+            C_in, 
+            C_out,
+            activation = nn.ReLU(inplace=True),
+            mapping = None,
+            relation_prior = 1,
+            first_layer = False
+    ):
+        super(QRSConv, self).__init__()
+        assert first_layer
+        self.bn_rsconv = nn.BatchNorm2d(C_in)
+        self.bn_channel_raising = nn.BatchNorm1d(C_out)
+        self.bn_xyz_raising = nn.BatchNorm2d(C_in)        
+        self.bn_mapping = nn.BatchNorm2d(math.floor(C_out / 2))
+        self.activation = activation
+        self.relation_prior = relation_prior
+        self.first_layer = first_layer
+        self.mapping_func1 = mapping[0]
+        self.mapping_func2 = mapping[1]
+        self.cr_mapping = mapping[2]
+        self.xyz_raising = mapping[3]
+        
+    def forward(self, input):            # input: (B, 2 + 4*M, npoint, nsample)
+        h_xi_xj = input[:, :2, :, :]     # (B, 2, npoint, nsample+1), invariance features
+        x = input[:, 2:, :, :].permute(0, 2, 3, 1)           # (B, 4*M, npoint, nsample+1), input features
+        nsample = x.size()[3]
+
+        h_xi_xj = self.mapping_func2(self.activation(self.bn_mapping(self.mapping_func1(h_xi_xj))))
+        x = self.activation(self.bn_xyz_raising(self.xyz_raising(x).permute(0, 3, 1, 2)))
+        x = F.max_pool2d(self.activation(self.bn_rsconv(torch.mul(h_xi_xj, x))), kernel_size = (1, nsample)).squeeze(3)   # (B, C_in, npoint)
+        del h_xi_xj
+        x = self.activation(self.bn_channel_raising(self.cr_mapping(x)))
+        
+        return x
         
 class RSConvLayer(nn.Sequential):
 
@@ -107,7 +148,8 @@ class SharedRSConv(nn.Sequential):
             activation=nn.ReLU(inplace=True),
             mapping = None,
             relation_prior = 1,
-            first_layer = False
+            first_layer = False,
+            conv=RSConv,
     ):
         super().__init__()
 
@@ -120,7 +162,8 @@ class SharedRSConv(nn.Sequential):
                     activation = activation,
                     mapping = mapping,
                     relation_prior = relation_prior,
-                    first_layer = first_layer
+                    first_layer = first_layer,
+                    conv=conv,
                 )
             )
 

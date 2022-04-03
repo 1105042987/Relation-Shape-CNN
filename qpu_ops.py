@@ -1,5 +1,4 @@
 import torch
-import qpu._ext as _ext
 
 def qpu_linear(input, weight, bias):
     """
@@ -39,24 +38,6 @@ class QuaternionRemoveZeros(torch.autograd.Function):
         gj[index] = 0
         gk[index] = 0
         return gr, gi, gj, gk
-
-
-class HMD_GPU(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, inputs):
-        ctx.batchShape = inputs.shape[:-3]
-        ctx.inSize = inputs.shape[-2]
-        ctx.outSize = inputs.shape[-3]
-        
-        mem = _ext.hamilton_product(inputs.view(-1,ctx.outSize,ctx.inSize,4))
-        ctx.save_for_backward(mem)
-        return mem[...,1,:].reshape(*ctx.batchShape,ctx.outSize*4)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        mem, = ctx.saved_tensors
-        lower = _ext.hamilton_product_grad(grad_output.view(-1,ctx.outSize,4),mem,ctx.inSize)
-        return lower.view(*ctx.batchShape,ctx.outSize,ctx.inSize,4)
 
 
 def quaternion_normalize(input, dim):

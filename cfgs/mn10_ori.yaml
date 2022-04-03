@@ -2,7 +2,7 @@ common:
     workers: 4
 
     num_points: 1024
-    num_classes: 40
+    num_classes: 10
     batch_size: 32
     
     base_lr: 0.001
