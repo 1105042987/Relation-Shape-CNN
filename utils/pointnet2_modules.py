@@ -180,35 +180,41 @@ class QPointnetSAModuleMSG(_PointnetSAModuleBase):
             use_xyz: bool = True,
             bias = True,
             init = nn.init.kaiming_normal_,
-            first_layer = True,
+            first_layer = False,
             relation_prior = 1,
             typer=['theta'],
     ):
         super().__init__()
         assert len(radii) == len(nsamples) == len(mlps)
-        assert first_layer
         self.npoint = npoint
         self.groupers = nn.ModuleList()
         self.mlps = nn.ModuleList()
         
         # initialize shared mapping functions
+        C_in = mlps[0][0] if not use_xyz else mlps[0][0] + 2
+        # C_in = mlps[0][0] + 2 if use_xyz and npoint is None else mlps[0][0]
         C_out = mlps[0][1]
-        C_mid = math.floor(C_out / 2)
-        Cout_qpu = math.floor(C_out / 4)
+        
+        in_channels = 2
+        
+        if first_layer:
+            Cout_qpu = math.floor(C_out / 4)
+            post_process = QuaterPostProcess(-1,typer)
+            C_in = post_process.outfeat(Cout_qpu*4)
 
-        post_process = QuaterPostProcess(-1,typer)
-        Cout_qpost = post_process.outfeat(Cout_qpu*4)
-        mapping_func1 = nn.Conv2d(in_channels = 2, out_channels = C_mid, kernel_size = (1, 1), 
+            mapping_func1 = nn.Conv2d(in_channels = in_channels, out_channels = math.floor(C_out / 2), kernel_size = (1, 1), 
+                                    stride = (1, 1), bias = bias)
+            mapping_func2 = nn.Conv2d(in_channels = math.floor(C_out / 2), out_channels = C_in, kernel_size = (1, 1), 
+                                stride = (1, 1), bias = bias)
+            xyz_raising = nn.Sequential(
+                QPU(4*8,Cout_qpu*4),
+                post_process,
+            )
+        elif npoint is not None:
+            mapping_func1 = nn.Conv2d(in_channels = in_channels, out_channels = math.floor(C_out / 4), kernel_size = (1, 1), 
+                                      stride = (1, 1), bias = bias)
+            mapping_func2 = nn.Conv2d(in_channels = math.floor(C_out / 4), out_channels = C_in, kernel_size = (1, 1), 
                                   stride = (1, 1), bias = bias)
-        mapping_func2 = nn.Conv2d(in_channels = C_mid, out_channels = Cout_qpost, kernel_size = (1, 1), 
-                              stride = (1, 1), bias = bias)
-        # xyz_raising = nn.Conv2d(in_channels = C_in, out_channels = 16, kernel_size = (1, 1), 
-        #                       stride = (1, 1), bias = bias)
-        xyz_raising = nn.Sequential(
-            QPU(4*8,Cout_qpu*4),
-            post_process,
-        )
-    
         if npoint is not None:
             init(mapping_func1.weight)
             init(mapping_func2.weight)
@@ -217,23 +223,25 @@ class QPointnetSAModuleMSG(_PointnetSAModuleBase):
                 nn.init.constant_(mapping_func2.bias, 0)    
                      
             # channel raising mapping
-            cr_mapping = nn.Conv1d(in_channels = Cout_qpost, 
-                            out_channels = C_out, kernel_size = 1, stride = 1, bias = bias)
+            cr_mapping = nn.Conv1d(in_channels = C_in, out_channels = C_out, kernel_size = 1, 
+                                      stride = 1, bias = bias)
             init(cr_mapping.weight)
             nn.init.constant_(cr_mapping.bias, 0)
-
-        mapping = [mapping_func1, mapping_func2, cr_mapping, xyz_raising]
+        
+        if first_layer:
+            mapping = [mapping_func1, mapping_func2, cr_mapping, xyz_raising]
+        elif npoint is not None:
+            mapping = [mapping_func1, mapping_func2, cr_mapping]
         
         for i in range(len(radii)):
             radius = radii[i]
             nsample = nsamples[i]
             self.groupers.append(
-                pointnet2_utils.QueryAndGroupQuat(radius, nsample, use_center=use_xyz)
-                if npoint is not None else pointnet2_utils.GroupAll(use_xyz)
+                pointnet2_utils.QueryAndGroupQuat(radius, nsample, use_xyz=use_xyz)
+                if npoint is not None else pointnet2_utils.GroupAllQuat(use_xyz)
             )
             mlp_spec = mlps[i]
-            if first_layer:
-                mlp_spec[0] = Cout_qpost
+            if use_xyz: mlp_spec[0] = C_in
             if npoint is not None:
                 self.mlps.append(pt_utils.SharedRSConv(mlp_spec, mapping = mapping, relation_prior = relation_prior, first_layer = first_layer, conv=pt_utils.QRSConv))
             else:   # global convolutional pooling

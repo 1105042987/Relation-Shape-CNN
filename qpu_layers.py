@@ -50,8 +50,9 @@ class QuaterPostProcess(nn.Module):
         self.cmd = 'torch.cat([{}],-1)'.format(','.join([self.TYPE_MAP.get(ot,ot) for ot in self.out_type]))
 
     def outfeat(self,infeat_real):
-        infeat = infeat_real//4
-        return sum([self.TYPE_LEN[ot] for ot in self.out_type])*infeat - int('inner' in self.out_type)
+        self.in_feat = infeat_real
+        self.out_feat = sum([self.TYPE_LEN[ot] for ot in self.out_type])*(infeat_real//4) - int('inner' in self.out_type)
+        return self.out_feat
 
     def forward(self,inputs):
         r,i,j,k = inputs.split(inputs.shape[self.dim] // 4, self.dim)
@@ -69,3 +70,7 @@ class QuaterPostProcess(nn.Module):
             inner = x[...,:-1]*x[...,1:]+y[...,:-1]*y[...,1:]+z[...,:-1]*z[...,1:]
             inner = torch.acos(inner.clamp(min=-1+1e-6, max=1-1e-6))
         return eval(self.cmd)
+    def __repr__(self):
+        return self.__class__.__name__ + '(' \
+            + 'in_features=' + str(self.in_feat) \
+            + ', out_features=' + str(self.out_feat) + ')'

@@ -30,10 +30,10 @@ class RSCNN_SSN(nn.Module):
         super().__init__()
 
         self.SA_modules = nn.ModuleList()
-        
+        SA_MSG = PointnetSAModuleMSG if typer is None else QPointnetSAModuleMSG
         if typer is None:
             self.SA_modules.append(
-                PointnetSAModuleMSG(
+                SA_MSG(
                     npoint=512,
                     radii=[0.23],
                     nsamples=[48],
@@ -45,10 +45,10 @@ class RSCNN_SSN(nn.Module):
             )
         else:
             self.SA_modules.append(
-                QPointnetSAModuleMSG(
-                    npoint=512,
+                SA_MSG(
+                    npoint=256,
                     radii=[0.4],
-                    nsamples=[48],
+                    nsamples=[32],
                     mlps=[[input_channels, 128]],
                     first_layer=True,
                     use_xyz=use_xyz,
@@ -58,7 +58,7 @@ class RSCNN_SSN(nn.Module):
             )
 
         self.SA_modules.append(
-            PointnetSAModuleMSG(
+            SA_MSG(
                 npoint=128,
                 radii=[0.32],
                 nsamples=[64],
@@ -70,9 +70,11 @@ class RSCNN_SSN(nn.Module):
         
         self.SA_modules.append(
             # global convolutional pooling
-            PointnetSAModule(
-                nsample = 128,
-                mlp=[512, 1024], 
+            SA_MSG(
+                npoint=None,
+                radii=[None],
+                nsamples=[128],
+                mlps=[[512, 1024]], 
                 use_xyz=use_xyz
             )
         )
