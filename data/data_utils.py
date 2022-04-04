@@ -137,3 +137,25 @@ class PointcloudRandomInputDropout(object):
                 pc[i, :, :] = cur_pc
 
         return pc
+
+class PointcloudArbRotate(object):
+    def __init__(self):
+        # self.axis = axis
+        pass
+
+    def __call__(self, points):
+        rotation_angle = np.random.uniform() * 2 * np.pi
+        axis = np.random.rand(3)
+        axis = axis / (np.sqrt(np.sum(axis * axis)) + 1e-6)
+        rotation_matrix = angle_axis(rotation_angle, axis)
+
+        normals = points.size(1) > 3
+        if not normals:
+            return torch.matmul(points, rotation_matrix.t())
+        else:
+            pc_xyz = points[:, 0:3]
+            pc_normals = points[:, 3:]
+            points[:, 0:3] = torch.matmul(pc_xyz, rotation_matrix.t())
+            points[:, 3:] = torch.matmul(pc_normals, rotation_matrix.t())
+
+            return points
