@@ -33,7 +33,7 @@ parser.add_argument('config', default='cfgs/config_ssn_cls.yaml', type=str)
 parser.add_argument("-r","--rotate", action="store_true")
 NUM_REPEAT = 1
 NUM_VOTE = 1
-
+# CUDA_VISIBLE_DEVICES=0 python voting_evaluate_cls.py cfgs/mn10_R.yaml -r
 def main():
     args = parser.parse_args()
     with open(args.config) as f:
@@ -69,8 +69,8 @@ def main():
     for i in range(NUM_REPEAT):
         preds = []
         labels = []
-        for j, data in enumerate(test_dataloader, 0):
-            with torch.no_grad():
+        with torch.no_grad():
+            for j, data in enumerate(test_dataloader, 0):
                 points, target = data
                 points, target = points.cuda(), target.cuda()
                 

@@ -506,7 +506,7 @@ def rot_sort(p, pts, coord_dim, sample_dim, ref=None):
     # If projection is too small, we randomly give an angle 
     # (because ref is not rotation-invariant)
     close_ind = torch.sum(projs * projs, dim=coord_dim, keepdim=True) < 1e-12
-    angles[close_ind] = (torch.rand(close_ind.sum()).cuda() - 0.5) * math.pi * 2
+    angles[close_ind] = (torch.rand(close_ind.sum()).cuda() - 0.5) * math.pi * 2  # something error here [TODO]
 
     # Sort according to angles
     ind = angles.sort(dim=sample_dim)[1]
@@ -530,9 +530,10 @@ def to_quat(xyz, radius):
     return q
 
 def calc_invariance(center,relative_vector,dim):
-    norm2 = torch.sqrt(torch.sum(relative_vector**2, dim=dim, keepdim=True))
+    norm2 = torch.sqrt(torch.sum(relative_vector**2, dim=dim, keepdim=True)+1e-12)
+    assert (norm2==0).sum()==0
     center = normalize(center,dim=dim)
-    cross = (center*relative_vector).sum(dim, keepdim=True)/(norm2+1e-6)
+    cross = (center*relative_vector).sum(dim, keepdim=True)/norm2
     angle = torch.acos(torch.clamp(cross, min=-1+1e-6, max=1-1e-6))
     return torch.cat([norm2,angle],dim=dim)
 

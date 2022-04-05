@@ -15,6 +15,8 @@ import data.data_utils as d_utils
 import argparse
 import random
 import yaml
+import faulthandler
+faulthandler.enable()
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
@@ -33,7 +35,7 @@ parser.add_argument('--config', default='cfgs/config_ssn_cls.yaml', type=str)
 def main():
     args = parser.parse_args()
     with open(args.config) as f:
-        config = yaml.load(f)
+        config = yaml.load(f,Loader=yaml.FullLoader)
     print("\n**************************")
     for k, v in config['common'].items():
         setattr(args, k, v)
@@ -138,8 +140,8 @@ def validate(test_dataloader, model, criterion, args, iter):
     global g_acc
     model.eval()
     losses, preds, labels = [], [], []
-    for j, data in enumerate(test_dataloader, 0):
-        with torch.no_grad():
+    with torch.no_grad():
+        for j, data in enumerate(test_dataloader, 0):
             points, target = data
             points, target = points.cuda(), target.cuda()
             

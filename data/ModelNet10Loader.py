@@ -19,7 +19,7 @@ def _get_data_files(list_filename):
 
 
 def _load_data_file(name):
-    f = h5py.File(name)
+    f = h5py.File(name,'r')
     data = f["data"][:]
     label = f["label"][:]
     return data, label
@@ -79,7 +79,7 @@ class ModelNet10Cls(data.Dataset):
         self.set_num_points(num_points)
 
     def __getitem__(self, idx):
-        pt_idxs = np.arange(0, self.num_points)
+        pt_idxs = np.arange(0, self.points.shape[1])
         np.random.shuffle(pt_idxs)
 
         current_points = self.points[idx, pt_idxs].copy()

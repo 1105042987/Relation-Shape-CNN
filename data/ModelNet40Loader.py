@@ -11,7 +11,7 @@ def _get_data_files(list_filename):
         return [line.rstrip()[5:] for line in f]
 
 def _load_data_file(name):
-    f = h5py.File(name)
+    f = h5py.File(name,'r')
     data = f['data'][:]
     label = f['label'][:]
     return data, label
@@ -47,8 +47,7 @@ class ModelNet40Cls(data.Dataset):
 
     def __getitem__(self, idx):
         pt_idxs = np.arange(0, self.points.shape[1])   # 2048
-        if self.train:
-            np.random.shuffle(pt_idxs)
+        np.random.shuffle(pt_idxs)
         
         current_points = self.points[idx, pt_idxs].copy()
         label = torch.from_numpy(self.labels[idx]).type(torch.LongTensor)

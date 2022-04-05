@@ -10,12 +10,14 @@ pynvml.nvmlInit()
 handles = [pynvml.nvmlDeviceGetHandleByIndex(cuda) for cuda in CUDA_LIST]
 mp = {}
 waittimes = 0
+yellow = lambda x: f'\033[33m {x} \033[0m'
+
 with open('job.txt','r') as f:
     left_jobs = len(f.readlines())
 
 def CallAndTurnFlag(cmd,cuda):
     cmd_for_run = cmd.format(cuda).replace('\n','') # + '> {2:0>2}{3:0>2}_{4:0>2}{5:0>2}_cu{0}.log'.format(cuda,*time.localtime())
-    print('\n'+cmd_for_run+f'\tpid: {os.getpid()}')
+    print(yellow('\n'+cmd_for_run+f'\tpid: {os.getpid()}'))
     try:
         os.system(cmd_for_run)
     except Exception as e:
@@ -24,7 +26,7 @@ def CallAndTurnFlag(cmd,cuda):
         cmd_list.insert(0,cmd)
         with open('job.txt','w') as f:
             for line in cmd_list: f.write(line)
-        print("Error happended when calling:",cmd)
+        print("Error happended when calling:",cmd.replace('\n',''))
         print("Error Detials:",str(e))
 
 def lauch_one(cuda):
@@ -55,7 +57,7 @@ signal.signal(signal.SIGCHLD, child_exited)
 while True:
     meminfos = [pynvml.nvmlDeviceGetMemoryInfo(handle) for handle in handles]
     used = [meminfo.used/1024/1024 for meminfo in meminfos]
-    print(f'wait {waittimes} min:\t'+',\t'.join([f'{idx}: {it} MB' for idx,it in zip(CUDA_LIST,used)]),end='\r')
+    print(f' wait {waittimes} min:\t'+',\t'.join([f'{idx}: {it} MB' for idx,it in zip(CUDA_LIST,used)]),end='\r')
     for cuda,it in enumerate(used):
         if it > 1000: continue
         left_jobs = lauch_one(cuda)
