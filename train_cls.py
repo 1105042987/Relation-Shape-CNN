@@ -22,18 +22,20 @@ torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = True
 
-seed = 123
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)            
-torch.cuda.manual_seed(seed)       
-torch.cuda.manual_seed_all(seed) 
-g_acc = 0    # only save the model whose acc > 0.91
+g_acc = 0
 st_epoch = 0
 
 parser = argparse.ArgumentParser(description='Relation-Shape CNN Shape Classification Training')
 parser.add_argument('--config', default='cfgs/config_ssn_cls.yaml', type=str)
 parser.add_argument('--resume', action="store_true")
+args = parser.parse_args()
+if not args.resume:
+    seed = 123
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)            
+    torch.cuda.manual_seed(seed)       
+    torch.cuda.manual_seed_all(seed)
 
 class sch_lr_func:
     def __init__(self,lr_decay,decay_step,lr_clip,base_lr) -> None:
@@ -44,8 +46,7 @@ class sch_lr_func:
     def __call__(self, e):
         return max(self.lr_decay**(e // self.decay_step), self.lr_clip / self.base_lr)
 
-def main():
-    args = parser.parse_args()
+def main(args):
     with open(args.config) as f:
         config = yaml.load(f,Loader=yaml.FullLoader)
     print("\n**************************")
@@ -198,4 +199,4 @@ def validate(test_dataloader, model, criterion, args, iter):
     model.train()
     
 if __name__ == "__main__":
-    main()
+    main(args)
