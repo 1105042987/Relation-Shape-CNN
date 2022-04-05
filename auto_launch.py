@@ -1,14 +1,16 @@
 import pynvml
 import os
 import time
-from multiprocessing import Process
+from multiprocessing import Process,Manager
 import signal
 
 CUDA_LIST = list(range(4))
 
 pynvml.nvmlInit()
 handles = [pynvml.nvmlDeviceGetHandleByIndex(cuda) for cuda in CUDA_LIST]
-mp = {}
+manager = Manager()
+avaliable = manager.dict({cuda:True for cuda in CUDA_LIST})
+mp = {cuda:None for cuda in CUDA_LIST}
 waittimes = 0
 yellow = lambda x: f'\033[33m {x} \033[0m'
 
@@ -17,17 +19,17 @@ with open('job.txt','r') as f:
 
 def CallAndTurnFlag(cmd,cuda):
     cmd_for_run = cmd.format(cuda).replace('\n','') # + '> {2:0>2}{3:0>2}_{4:0>2}{5:0>2}_cu{0}.log'.format(cuda,*time.localtime())
-    print(yellow('\n'+cmd_for_run+f'\tpid: {os.getpid()}'))
-    try:
-        os.system(cmd_for_run)
-    except Exception as e:
-        with open('job.txt','r') as f:
-            cmd_list = f.readlines()
-        cmd_list.insert(0,cmd)
-        with open('job.txt','w') as f:
-            for line in cmd_list: f.write(line)
-        print("Error happended when calling:",cmd.replace('\n',''))
-        print("Error Detials:",str(e))
+    print(yellow(f'\n{cmd_for_run}\tpid: {os.getpid()}'))
+    while True:
+        try:
+            os.system(cmd_for_run)
+            avaliable[cuda]=True
+            break
+        except Exception as e:
+            cmd_for_run = cmd_for_run.replace('train_cls.sh','train_cls_resume.sh')
+            print(yellow(f'\nretry:{cmd_for_run}\tpid: {os.getpid()}'))
+            print(f'Because: {e}')
+
 
 def lauch_one(cuda):
     global waittimes
@@ -42,6 +44,7 @@ def lauch_one(cuda):
         for line in cmd_list: f.write(line)
 
     waittimes = 0
+    avaliable[cuda]=False
     mp[cuda] = Process(target=CallAndTurnFlag,args=(cmd,cuda))
     mp[cuda].start()
     time.sleep(10)
@@ -54,13 +57,18 @@ def child_exited(sig, frame):
     ))
 
 signal.signal(signal.SIGCHLD, child_exited)
-while True:
-    meminfos = [pynvml.nvmlDeviceGetMemoryInfo(handle) for handle in handles]
-    used = [meminfo.used/1024/1024 for meminfo in meminfos]
-    print(f' wait {waittimes} min:\t'+',\t'.join([f'{idx}: {it} MB' for idx,it in zip(CUDA_LIST,used)]),end='\r')
-    for cuda,it in enumerate(used):
-        if it > 1000: continue
-        left_jobs = lauch_one(cuda)
-    if left_jobs == 0: break
-    time.sleep(60)
-    waittimes += 1
+try:
+    while True:
+        meminfos = [pynvml.nvmlDeviceGetMemoryInfo(handle) for handle in handles]
+        used = [meminfo.used/1024/1024 for meminfo in meminfos]
+        print(f' wait {waittimes} min:\t'+',\t'.join([f'{idx}({avaliable[idx]}): {umem} MB' for idx,umem in zip(CUDA_LIST,used)]),end='\r')
+        for cuda,umem in zip(CUDA_LIST,used):
+            if umem > 1000 or not avaliable[cuda]: continue
+            left_jobs = lauch_one(cuda)
+        if left_jobs == 0: break
+        time.sleep(60)
+        waittimes += 1
+except:
+    for th in mp.values():
+        if th is not None:
+            th.terminate()

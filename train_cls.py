@@ -28,9 +28,21 @@ np.random.seed(seed)
 torch.manual_seed(seed)            
 torch.cuda.manual_seed(seed)       
 torch.cuda.manual_seed_all(seed) 
+g_acc = 0    # only save the model whose acc > 0.91
+st_epoch = 0
 
 parser = argparse.ArgumentParser(description='Relation-Shape CNN Shape Classification Training')
 parser.add_argument('--config', default='cfgs/config_ssn_cls.yaml', type=str)
+parser.add_argument('--resume', action="store_true")
+
+class sch_lr_func:
+    def __init__(self,lr_decay,decay_step,lr_clip,base_lr) -> None:
+        self.lr_decay = lr_decay
+        self.decay_step = decay_step
+        self.lr_clip = lr_clip
+        self.base_lr = base_lr
+    def __call__(self, e):
+        return max(self.lr_decay**(e // self.decay_step), self.lr_clip / self.base_lr)
 
 def main():
     args = parser.parse_args()
@@ -80,7 +92,8 @@ def main():
     optimizer = optim.Adam(
         model.parameters(), lr=args.base_lr, weight_decay=args.weight_decay)
 
-    lr_lbmd = lambda e: max(args.lr_decay**(e // args.decay_step), args.lr_clip / args.base_lr)
+    # lr_lbmd = lambda e: max(args.lr_decay**(e // args.decay_step), args.lr_clip / args.base_lr)
+    lr_lbmd = sch_lr_func(args.lr_decay,args.decay_step,args.lr_clip,args.base_lr)
     bnm_lmbd = lambda e: max(args.bn_momentum * args.bn_decay**(e // args.decay_step), args.bnm_clip)
     lr_scheduler = lr_sched.LambdaLR(optimizer, lr_lbmd)
     bnm_scheduler = pt_utils.BNMomentumScheduler(model, bnm_lmbd)
@@ -91,6 +104,14 @@ def main():
 
     criterion = nn.CrossEntropyLoss()
     num_batch = len(train_dataset)/args.batch_size
+    if args.resume:
+        model.load_state_dict(torch.load(os.path.join(args.save_path,'last_model.pth')))
+        info = torch.load(os.path.join(args.save_path,'last_info.pth'))
+        optimizer.load_state_dict(info['opt'])
+        lr_scheduler.load_state_dict(info['sch'])
+        global g_acc,st_epoch
+        g_acc = info['best_acc']
+        st_epoch = info['epoch']+1
     
     # training
     train(train_dataloader, test_dataloader, model, criterion, optimizer, lr_scheduler, bnm_scheduler, args, num_batch)
@@ -98,11 +119,10 @@ def main():
 
 def train(train_dataloader, test_dataloader, model, criterion, optimizer, lr_scheduler, bnm_scheduler, args, num_batch):
     PointcloudScaleAndTranslate = d_utils.PointcloudScaleAndTranslate()   # initialize augmentation
-    global g_acc 
-    g_acc = 0    # only save the model whose acc > 0.91
+    global g_acc,st_epoch
     batch_count = 0
     model.train()
-    for epoch in range(args.epochs):
+    for epoch in range(st_epoch,args.epochs):
         for i, data in enumerate(train_dataloader, 0):
             if lr_scheduler is not None:
                 lr_scheduler.step(epoch)
@@ -134,6 +154,13 @@ def train(train_dataloader, test_dataloader, model, criterion, optimizer, lr_sch
             # validation in between an epoch
             if args.evaluate and batch_count % int(args.val_freq_epoch * num_batch) == 0:
                 validate(test_dataloader, model, criterion, args, batch_count)
+        torch.save(model.state_dict(), os.path.join(args.save_path,'last_model.pth'))
+        torch.save({
+            'opt':optimizer.state_dict(),
+            'sch':lr_scheduler.state_dict(),
+            'epoch':epoch,
+            'best_acc': g_acc,
+        }, os.path.join(args.save_path,'last_info.pth'))
 
 
 def validate(test_dataloader, model, criterion, args, iter): 

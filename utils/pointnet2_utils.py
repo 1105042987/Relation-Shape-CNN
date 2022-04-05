@@ -506,7 +506,7 @@ def rot_sort(p, pts, coord_dim, sample_dim, ref=None):
     # If projection is too small, we randomly give an angle 
     # (because ref is not rotation-invariant)
     close_ind = torch.sum(projs * projs, dim=coord_dim, keepdim=True) < 1e-12
-    angles[close_ind] = (torch.rand(close_ind.sum()).cuda() - 0.5) * math.pi * 2  # something error here [TODO]
+    angles[close_ind] = ((torch.rand(close_ind.sum()) - 0.5) * math.pi * 2).cuda()  # something error here [TODO]
 
     # Sort according to angles
     ind = angles.sort(dim=sample_dim)[1]
