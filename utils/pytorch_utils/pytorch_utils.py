@@ -107,12 +107,12 @@ class QRSConv(nn.Module):
     def forward(self, input):            # input: (B, 2 + 4*M, npoint, nsample)
 
         h_xi_xj = input[:, :2, :, :]     # (B, 2, npoint, nsample+1), invariance features
-        x = input#[:, 2:, :, :]           # (B, 4*M, npoint, nsample+1), input features
+        x = input[:, 2:, :, :]           # (B, 4*M, npoint, nsample+1), input features
         nsample = x.size()[3]
 
         h_xi_xj = self.mapping_func2(self.activation(self.bn_mapping(self.mapping_func1(h_xi_xj))))
         if self.first_layer:
-            x = self.activation(self.bn_xyz_raising(self.xyz_raising(input[:, 2:, :, :].permute(0, 2, 3, 1)).permute(0, 3, 1, 2)))
+            x = self.activation(self.bn_xyz_raising(self.xyz_raising(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)))
         x = F.max_pool2d(self.activation(self.bn_rsconv(torch.mul(h_xi_xj, x))), kernel_size = (1, nsample)).squeeze(3)   # (B, C_in, npoint)
         del h_xi_xj
         x = self.activation(self.bn_channel_raising(self.cr_mapping(x)))

@@ -191,14 +191,14 @@ class QPointnetSAModuleMSG(_PointnetSAModuleBase):
         self.mlps = nn.ModuleList()
         
         # initialize shared mapping functions
-        C_in = mlps[0][0] if not use_xyz else mlps[0][0] + 2
-        # C_in = mlps[0][0] + 2 if use_xyz and npoint is None else mlps[0][0]
+        # C_in = mlps[0][0] if not use_xyz else mlps[0][0] + 2
+        C_in = mlps[0][0] + 1 if use_xyz and npoint is None else mlps[0][0]
         C_out = mlps[0][1]
         
         in_channels = 2
         
         if first_layer:
-            Cout_qpu = math.floor(C_out / 2)
+            Cout_qpu = math.floor(C_out / 4)
             post_process = QuaterPostProcess(-1,typer)
             C_in = post_process.outfeat(Cout_qpu*4)
 

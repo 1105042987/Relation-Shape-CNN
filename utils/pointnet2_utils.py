@@ -512,7 +512,7 @@ def rot_sort(p, pts, coord_dim, sample_dim, ref=None):
     ind = angles.sort(dim=sample_dim)[1]
     pts = pts.gather(index=ind.expand_as(pts), dim=sample_dim)
     
-    return pts
+    return ind,pts
 
 
 def to_quat(xyz, radius):
@@ -588,12 +588,13 @@ class QueryAndGroupQuat(nn.Module):
             grouped_xyz = grouping_operation(xyz_trans, idx)            # (B, 3, npoint, nsample+1)
             new_xyz = new_xyz.transpose(1, 2).unsqueeze(-1)             # (B, 3, npoint, 1)
             if features is None: grouped_xyz = grouped_xyz[...,1:]      # first: (B, 3, npoint, nsample)
-            grouped_xyz = rot_sort(p=new_xyz, pts=grouped_xyz - new_xyz, coord_dim=1, sample_dim=-1)
+            sorted_idx, grouped_xyz = rot_sort(p=new_xyz, pts=grouped_xyz - new_xyz, coord_dim=1, sample_dim=-1)
             invariance_feat = calc_invariance(new_xyz,grouped_xyz,dim=1) # (B, 2, npoint, nsample[+1])
 
         if features is not None:
             new_features = grouping_operation(features, idx)  # (B, C, npoint, nsample+1)
             if self.use_xyz:
+                new_features = new_features.gather(index=sorted_idx.expand_as(new_features), dim=-1)
                 new_features = torch.cat([invariance_feat, new_features], dim=1)  # (B, 2 + C , npoint, nsample+1)
         else:
             assert self.use_xyz, "Cannot have not features and not use xyz as a feature!"
@@ -642,7 +643,8 @@ class GroupAllQuat(nn.Module):
         new_features : torch.Tensor
             (B, C + 2, 1, N) tensor
         """        
-        new_features = calc_invariance(xyz.mean(1,keepdim=True),xyz,2).transpose(1, 2).unsqueeze(2)
+        # new_features = calc_invariance(xyz.mean(1,keepdim=True),xyz,2).transpose(1, 2).unsqueeze(2)
+        new_features = (xyz*xyz).sum(1,keepdim=True).sqrt()
         if features is not None:
             grouped_features = features.unsqueeze(2)
             if self.use_xyz:
