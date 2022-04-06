@@ -16,6 +16,7 @@ import data.data_utils as d_utils
 import argparse
 import random
 import yaml
+from tqdm import tqdm
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
@@ -37,10 +38,11 @@ NUM_VOTE = 1
 def main():
     args = parser.parse_args()
     with open(args.config) as f:
-        config = yaml.load(f)
+        config = yaml.load(f,Loader=yaml.FullLoader)
     for k, v in config['common'].items():
         setattr(args, k, v)
     args.save_path = os.path.join(args.save_path,args.config.split('/')[-1].split('.')[0])
+    os.system(f"tail {os.path.join(args.save_path,'best.txt')} -n 1")
     test_transforms = [d_utils.PointcloudToTensor()]
     if args.rotate: test_transforms.append(d_utils.PointcloudArbRotate())
     test_transforms = transforms.Compose(test_transforms)
@@ -70,7 +72,7 @@ def main():
         preds = []
         labels = []
         with torch.no_grad():
-            for j, data in enumerate(test_dataloader, 0):
+            for data in tqdm(test_dataloader):
                 points, target = data
                 points, target = points.cuda(), target.cuda()
                 

@@ -52,7 +52,7 @@ def main(args):
     print("\n**************************")
     for k, v in config['common'].items():
         setattr(args, k, v)
-        print('\n[%s]:'%(k), v)
+        if not args.resume: print('\n[%s]:'%(k), v)
     print("\n**************************\n")
     
     args.save_path = os.path.join(args.save_path,args.config.split('/')[-1].split('.')[0])
@@ -113,6 +113,7 @@ def main(args):
         global g_acc,st_epoch
         g_acc = info['best_acc']
         st_epoch = info['epoch']+1
+        print('== RESUME ==')
     
     # training
     train(train_dataloader, test_dataloader, model, criterion, optimizer, lr_scheduler, bnm_scheduler, args, num_batch)

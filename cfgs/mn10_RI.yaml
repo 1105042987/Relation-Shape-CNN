@@ -1,5 +1,5 @@
 common:
-    workers: 2
+    workers: 4
 
     num_points: 1024
     num_classes: 10

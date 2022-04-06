@@ -531,7 +531,6 @@ def to_quat(xyz, radius):
 
 def calc_invariance(center,relative_vector,dim):
     norm2 = torch.sqrt(torch.sum(relative_vector**2, dim=dim, keepdim=True)+1e-12)
-    assert (norm2==0).sum()==0
     center = normalize(center,dim=dim)
     cross = (center*relative_vector).sum(dim, keepdim=True)/norm2
     angle = torch.acos(torch.clamp(cross, min=-1+1e-6, max=1-1e-6))
@@ -586,26 +585,27 @@ class QueryAndGroupQuat(nn.Module):
 
         if self.use_xyz:
             xyz_trans = xyz.transpose(1, 2).contiguous()
-            grouped_xyz = grouping_operation(xyz_trans, idx)  # (B, 3, npoint, nsample+1) TODO 1:?
-            new_xyz = new_xyz.transpose(1, 2).unsqueeze(-1)  # B, 3, npoint, 1
+            grouped_xyz = grouping_operation(xyz_trans, idx)            # (B, 3, npoint, nsample+1)
+            new_xyz = new_xyz.transpose(1, 2).unsqueeze(-1)             # (B, 3, npoint, 1)
+            if features is None: grouped_xyz = grouped_xyz[...,1:]      # first: (B, 3, npoint, nsample)
             grouped_xyz = rot_sort(p=new_xyz, pts=grouped_xyz - new_xyz, coord_dim=1, sample_dim=-1)
-            invariance_feat = calc_invariance(new_xyz,grouped_xyz,dim=1) # (B, 2, npoint, nsample+1)
+            invariance_feat = calc_invariance(new_xyz,grouped_xyz,dim=1) # (B, 2, npoint, nsample[+1])
 
         if features is not None:
-            new_features = grouping_operation(features, idx)  # (B, C, npoint, nsample+1) TODO 1:?
+            new_features = grouping_operation(features, idx)  # (B, C, npoint, nsample+1)
             if self.use_xyz:
                 new_features = torch.cat([invariance_feat, new_features], dim=1)  # (B, 2 + C , npoint, nsample+1)
         else:
             assert self.use_xyz, "Cannot have not features and not use xyz as a feature!"
             B, _, npoint, nsample = grouped_xyz.shape
-            grouped_quat = to_quat(grouped_xyz, self.radius).unsqueeze(2)  # B, 4, 1, npoint, nsample+1
+            grouped_quat = to_quat(grouped_xyz, self.radius).unsqueeze(2)  # B, 4, 1, npoint, nsample
             quat_features = [grouped_quat]
             # Cyclic permute and concat
             index = torch.tensor([x for x in range(1, nsample)] + [0]).cuda()
             for _ in range(self.M - 1):
                 quat_features.append(quat_features[-1].index_select(dim=-1, index=index))
-            quat_features = torch.cat(quat_features, dim=2)                         # B, 4, M, npoint, nsample+1
-            quat_features = quat_features.reshape(B, 4 * self.M, npoint, nsample)   # B, 4*M, npoint, nsample+1
+            quat_features = torch.cat(quat_features, dim=2)                         # B, 4, M, npoint, nsample
+            quat_features = quat_features.reshape(B, 4 * self.M, npoint, nsample)   # B, 4*M, npoint, nsample
             new_features = torch.cat([invariance_feat, quat_features], dim = 1)
         return new_features
 
