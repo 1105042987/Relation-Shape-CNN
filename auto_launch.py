@@ -21,11 +21,18 @@ with open('job.txt','r') as f:
 def CallAndTurnFlag(cmd,cuda):
     cmd_for_run = cmd.format(cuda).replace('\n','') # + '> {2:0>2}{3:0>2}_{4:0>2}{5:0>2}_cu{0}.log'.format(cuda,*time.localtime())
     print(yellow(f'\n{cmd_for_run}\tpid: {os.getpid()}'))
-    while True:
+    while avaliable[cuda] is not None:
         try:
             os.system(cmd_for_run)
             avaliable[cuda]=True
             print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Finished!'))
+            break
+        except KeyboardInterrupt:
+            print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Exit!'))
+            with open('job.txt','r') as f: cmd_list = f.readlines()
+            cmd_list.insert(0,cmd)
+            with open('job.txt','w') as f: 
+                for line in cmd_list: f.write(line)
             break
         except Exception as e:
             cmd_for_run = cmd_for_run.replace('train_cls.sh','train_cls_resume.sh')
@@ -60,12 +67,13 @@ if __name__ == '__main__':
             used = [meminfo.used/1024/1024 for meminfo in meminfos]
             print(f' wait {waittimes} min:\t'+',\t'.join([f'{idx}({avaliable[idx]}): {umem} MB' for idx,umem in zip(CUDA_LIST,used)]),end='\r')
             for cuda,umem in zip(CUDA_LIST,used):
-                if umem > 10000 or not avaliable[cuda]: continue
+                if umem > 1000 or not avaliable[cuda]: continue
                 left_jobs = lauch_one(cuda)
             if left_jobs == 0: break
             time.sleep(60)
             waittimes += 1
     except:
-        for th in mp.values():
+        for cuda,th in mp.items():
+            avaliable[cuda]=None
             if th is not None:
                 th.terminate()

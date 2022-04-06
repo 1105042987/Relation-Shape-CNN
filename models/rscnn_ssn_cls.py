@@ -75,7 +75,7 @@ class RSCNN_SSN(nn.Module):
                 radii=[None],
                 nsamples=[128],
                 mlps=[[512, 1024]], 
-                use_xyz=use_xyz
+                use_xyz=use_xyz if typer is None else False
             )
         )
 

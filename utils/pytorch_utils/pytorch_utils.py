@@ -90,7 +90,7 @@ class QRSConv(nn.Module):
         super(QRSConv, self).__init__()
         self.bn_rsconv = nn.BatchNorm2d(C_in)
         self.bn_channel_raising = nn.BatchNorm1d(C_out)
-        self.bn_xyz_raising = nn.BatchNorm2d(C_in)
+        # self.bn_xyz_raising = nn.BatchNorm2d(C_in)
         if first_layer:
             self.bn_mapping = nn.BatchNorm2d(math.floor(C_out / 2))
         else: 
@@ -112,7 +112,7 @@ class QRSConv(nn.Module):
 
         h_xi_xj = self.mapping_func2(self.activation(self.bn_mapping(self.mapping_func1(h_xi_xj))))
         if self.first_layer:
-            x = self.activation(self.bn_xyz_raising(self.xyz_raising(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)))
+            x = self.xyz_raising(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
         x = F.max_pool2d(self.activation(self.bn_rsconv(torch.mul(h_xi_xj, x))), kernel_size = (1, nsample)).squeeze(3)   # (B, C_in, npoint)
         del h_xi_xj
         x = self.activation(self.bn_channel_raising(self.cr_mapping(x)))
