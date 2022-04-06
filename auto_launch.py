@@ -13,6 +13,7 @@ avaliable = manager.dict({cuda:True for cuda in CUDA_LIST})
 mp = {cuda:None for cuda in CUDA_LIST}
 waittimes = 0
 yellow = lambda x: f'\033[33m {x} \033[0m'
+green = lambda x: f'\033[32m {x} \033[0m'
 
 with open('job.txt','r') as f:
     left_jobs = len(f.readlines())
@@ -24,6 +25,7 @@ def CallAndTurnFlag(cmd,cuda):
         try:
             os.system(cmd_for_run)
             avaliable[cuda]=True
+            print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Finished!'))
             break
         except Exception as e:
             cmd_for_run = cmd_for_run.replace('train_cls.sh','train_cls_resume.sh')
@@ -45,30 +47,25 @@ def lauch_one(cuda):
 
     waittimes = 0
     avaliable[cuda]=False
+    if mp[cuda] is not None: mp[cuda].join()
     mp[cuda] = Process(target=CallAndTurnFlag,args=(cmd,cuda))
     mp[cuda].start()
     time.sleep(10)
     return len(cmd_list)
 
-def child_exited(sig, frame):
-    pid, exitcode = os.wait()
-    print("Child process {pid} exited with code {exitcode}".format(
-        pid=pid, exitcode=exitcode
-    ))
-
-signal.signal(signal.SIGCHLD, child_exited)
-try:
-    while True:
-        meminfos = [pynvml.nvmlDeviceGetMemoryInfo(handle) for handle in handles]
-        used = [meminfo.used/1024/1024 for meminfo in meminfos]
-        print(f' wait {waittimes} min:\t'+',\t'.join([f'{idx}({avaliable[idx]}): {umem} MB' for idx,umem in zip(CUDA_LIST,used)]),end='\r')
-        for cuda,umem in zip(CUDA_LIST,used):
-            if umem > 1000 or not avaliable[cuda]: continue
-            left_jobs = lauch_one(cuda)
-        if left_jobs == 0: break
-        time.sleep(60)
-        waittimes += 1
-except:
-    for th in mp.values():
-        if th is not None:
-            th.terminate()
+if __name__ == '__main__':
+    try:
+        while True:
+            meminfos = [pynvml.nvmlDeviceGetMemoryInfo(handle) for handle in handles]
+            used = [meminfo.used/1024/1024 for meminfo in meminfos]
+            print(f' wait {waittimes} min:\t'+',\t'.join([f'{idx}({avaliable[idx]}): {umem} MB' for idx,umem in zip(CUDA_LIST,used)]),end='\r')
+            for cuda,umem in zip(CUDA_LIST,used):
+                if umem > 10000 or not avaliable[cuda]: continue
+                left_jobs = lauch_one(cuda)
+            if left_jobs == 0: break
+            time.sleep(60)
+            waittimes += 1
+    except:
+        for th in mp.values():
+            if th is not None:
+                th.terminate()

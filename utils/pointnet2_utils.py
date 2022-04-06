@@ -647,7 +647,6 @@ class GroupAllQuat(nn.Module):
         new_features = (xyz*xyz).sum(2,keepdim=True).sqrt().transpose(1, 2).unsqueeze(2)
         if features is not None:
             grouped_features = features.unsqueeze(2)
-            print(new_features.shape,grouped_features.shape)
             if self.use_xyz:
                 new_features = torch.cat([new_features, grouped_features], dim=1)  # (B, 2 + C, 1, N)
             else:
