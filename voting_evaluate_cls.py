@@ -32,8 +32,9 @@ torch.cuda.manual_seed_all(seed)
 parser = argparse.ArgumentParser(description='Relation-Shape CNN Shape Classification Voting Evaluation')
 parser.add_argument('config', default='cfgs/config_ssn_cls.yaml', type=str)
 parser.add_argument("-r","--rotate", action="store_true")
-NUM_REPEAT = 1
-NUM_VOTE = 1
+parser.add_argument("-v", default='', type=str)
+NUM_REPEAT = 20
+NUM_VOTE = 10
 # CUDA_VISIBLE_DEVICES=0 python voting_evaluate_cls.py cfgs/mn10_R.yaml -r
 def main():
     args = parser.parse_args()
@@ -41,7 +42,8 @@ def main():
         config = yaml.load(f,Loader=yaml.FullLoader)
     for k, v in config['common'].items():
         setattr(args, k, v)
-    args.save_path = os.path.join(args.save_path,args.config.split('/')[-1].split('.')[0])
+    print(f'Rotate: {args.rotate}')
+    args.save_path = os.path.join(args.save_path,args.config.split('/')[-1].split('.')[0]+args.v)
     os.system(f"tail {os.path.join(args.save_path,'best.txt')} -n 1")
     test_transforms = [d_utils.PointcloudToTensor()]
     if args.rotate: test_transforms.append(d_utils.PointcloudArbRotate())
@@ -68,6 +70,7 @@ def main():
     PointcloudScale = d_utils.PointcloudScale()   # initialize random scaling
     model.eval()
     global_acc = 0
+    accs = []
     for i in range(NUM_REPEAT):
         preds = []
         labels = []
@@ -95,10 +98,11 @@ def main():
         preds = torch.cat(preds, 0)
         labels = torch.cat(labels, 0)
         acc = float((preds == labels).sum()) / labels.numel()
+        accs.append(acc)
         if acc > global_acc:
             global_acc = acc
         print('Repeat %3d \t Acc: %0.6f' % (i + 1, acc))
-    print('\nBest voting acc: %0.6f' % (global_acc))
+    print(f'\nBest voting acc: {global_acc}, ave: {torch.Tensor(accs).mean()}')
 
 if __name__ == '__main__':
     main()
