@@ -23,17 +23,19 @@ def CallAndTurnFlag(cmd,cuda):
     print(yellow(f'\n{cmd_for_run}\tpid: {os.getpid()}'))
     while avaliable[cuda] is not None:
         try:
-            os.system(cmd_for_run)
-            avaliable[cuda]=True
-            print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Finished!'))
-            break
-        except KeyboardInterrupt:
-            print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Exit!'))
-            with open('job.txt','r') as f: cmd_list = f.readlines()
-            cmd_list.insert(0,cmd)
-            with open('job.txt','w') as f: 
-                for line in cmd_list: f.write(line)
-            break
+            code = os.system(cmd_for_run)
+            if code == 2:
+                print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Exit!'))
+                with open('job.txt','r') as f: cmd_list = f.readlines()
+                cmd_list.insert(0,cmd)
+                with open('job.txt','w') as f: 
+                    for line in cmd_list: f.write(line)
+                break
+            elif code == 0: 
+                avaliable[cuda]=True
+                print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Finished!'))
+                break
+            assert code==0, f'Error[{code}] happend!'
         except Exception as e:
             cmd_for_run = cmd_for_run.replace('train_cls.sh','train_cls_resume.sh')
             print(yellow(f'\nretry:{cmd_for_run}\tpid: {os.getpid()}'))
@@ -72,7 +74,7 @@ if __name__ == '__main__':
             if left_jobs == 0: break
             time.sleep(60)
             waittimes += 1
-    except:
+    except KeyboardInterrupt:
         for cuda,th in mp.items():
             avaliable[cuda]=None
             if th is not None:
