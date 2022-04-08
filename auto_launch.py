@@ -4,6 +4,7 @@ import time
 from multiprocessing import Process,Manager
 import signal
 
+waittimes = 0
 CUDA_LIST = list(range(4))
 
 pynvml.nvmlInit()
@@ -11,9 +12,10 @@ handles = [pynvml.nvmlDeviceGetHandleByIndex(cuda) for cuda in CUDA_LIST]
 manager = Manager()
 avaliable = manager.dict({cuda:True for cuda in CUDA_LIST})
 mp = {cuda:None for cuda in CUDA_LIST}
-waittimes = 0
+
 yellow = lambda x: f'\033[33m {x} \033[0m'
 green = lambda x: f'\033[32m {x} \033[0m'
+red = lambda x: f'\033[31m {x} \033[0m'
 
 with open('job.txt','r') as f:
     left_jobs = len(f.readlines())
@@ -25,7 +27,7 @@ def CallAndTurnFlag(cmd,cuda):
         try:
             code = os.system(cmd_for_run)
             if code == 2:
-                print(green(f'\n{cmd_for_run}\tpid: {os.getpid()} Exit!'))
+                print(red(f'\n{cmd_for_run}\tpid: {os.getpid()} Exit!'))
                 with open('job.txt','r') as f: cmd_list = f.readlines()
                 cmd_list.insert(0,cmd)
                 with open('job.txt','w') as f: 
@@ -39,7 +41,7 @@ def CallAndTurnFlag(cmd,cuda):
         except Exception as e:
             cmd_for_run = cmd_for_run.replace('train_cls.sh','train_cls_resume.sh')
             print(yellow(f'\nretry:{cmd_for_run}\tpid: {os.getpid()}'))
-            print(f'Because: {e}')
+            print(red(f'Because: {e}'))
 
 
 def lauch_one(cuda):
@@ -71,10 +73,11 @@ if __name__ == '__main__':
             for cuda,umem in zip(CUDA_LIST,used):
                 if umem > 1000 or not avaliable[cuda]: continue
                 left_jobs = lauch_one(cuda)
-            if left_jobs == 0: break
+            if left_jobs == 0 and all([avaliable[idx] for idx in CUDA_LIST]): break
             time.sleep(60)
             waittimes += 1
     except KeyboardInterrupt:
+        print(red('Attention!! Main Process Exit!!'))
         for cuda,th in mp.items():
             avaliable[cuda]=None
             if th is not None:
