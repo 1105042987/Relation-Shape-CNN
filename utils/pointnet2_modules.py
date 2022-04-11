@@ -199,17 +199,29 @@ class QPointnetSAModuleMSG(_PointnetSAModuleBase):
         
         if first_layer:
             Cout_qpu = math.floor(C_out / 4)
-            post_process = QuaterPostProcess(-1,typer)
-            C_in = post_process.outfeat(Cout_qpu*4)
+            if 'ablation' in typer:
+                if 'noAAM' in typer:
+                    xyz_raising = QPU(4*8,Cout_qpu*4)
+                    C_in = Cout_qpu*4
+                elif 'MLP' in typer:
+                    post_process = QuaterPostProcess(-1,['theta','inner'])
+                    xyz_raising = nn.Sequential(
+                        nn.Linear(4*8,Cout_qpu*4),
+                        post_process,
+                    )
+                    C_in = post_process.outfeat(Cout_qpu*4)
+            else:
+                post_process = QuaterPostProcess(-1,typer)
+                xyz_raising = nn.Sequential(
+                    QPU(4*8,Cout_qpu*4),
+                    post_process,
+                )
+                C_in = post_process.outfeat(Cout_qpu*4)
 
             mapping_func1 = nn.Conv2d(in_channels = in_channels, out_channels = math.floor(C_out / 2), kernel_size = (1, 1), 
                                     stride = (1, 1), bias = bias)
             mapping_func2 = nn.Conv2d(in_channels = math.floor(C_out / 2), out_channels = C_in, kernel_size = (1, 1), 
                                 stride = (1, 1), bias = bias)
-            xyz_raising = nn.Sequential(
-                QPU(4*8,Cout_qpu*4),
-                post_process,
-            )
         elif npoint is not None:
             mapping_func1 = nn.Conv2d(in_channels = in_channels, out_channels = math.floor(C_out / 4), kernel_size = (1, 1), 
                                       stride = (1, 1), bias = bias)

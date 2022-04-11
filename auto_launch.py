@@ -5,7 +5,7 @@ from multiprocessing import Process,Manager
 import signal
 
 waittimes = 0
-CUDA_LIST = list(range(4))
+CUDA_LIST = list(range(2))
 
 pynvml.nvmlInit()
 handles = [pynvml.nvmlDeviceGetHandleByIndex(cuda) for cuda in CUDA_LIST]
