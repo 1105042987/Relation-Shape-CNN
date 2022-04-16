@@ -210,6 +210,15 @@ class QPointnetSAModuleMSG(_PointnetSAModuleBase):
                         post_process,
                     )
                     C_in = post_process.outfeat(Cout_qpu*4)
+                elif 'RIMLP' in typer:
+                    post_process = QuaterPostProcess(-1,['theta','inner'])
+                    C_in = 16
+                    xyz_raising = nn.Sequential(
+                        post_process,
+                        nn.Linear(post_process.outfeat(4*1),C_in),
+                    )
+                else:
+                    assert False, 'Invalid typer'
             else:
                 post_process = QuaterPostProcess(-1,typer)
                 xyz_raising = nn.Sequential(
@@ -258,6 +267,8 @@ class QPointnetSAModuleMSG(_PointnetSAModuleBase):
                 self.mlps.append(pt_utils.SharedRSConv(mlp_spec, mapping = mapping, relation_prior = relation_prior, first_layer = first_layer, conv=pt_utils.QRSConv))
             else:   # global convolutional pooling
                 self.mlps.append(pt_utils.GloAvgConv(C_in = C_in, C_out = C_out))
+        if 'RIMLP' in typer:
+            self.groupers[0].M = 1
 
 class PointnetSAModule(PointnetSAModuleMSG):
     r"""Pointnet set abstrction layer
